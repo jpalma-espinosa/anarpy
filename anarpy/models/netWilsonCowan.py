@@ -4,77 +4,57 @@ Created on Tue Dec 22 14:56:13 2015
 The Huber_braun neuronal model function
 @author: porio
 """
-
 import numpy as np
-from numba import jit,float64, vectorize
-
+from numba import njit#jit,float64, vectorize
 from numba.core.errors import NumbaPerformanceWarning
 import warnings
 warnings.simplefilter('ignore', category=NumbaPerformanceWarning)
 
-#Node parameters
-# Any of them can be redefined as a vector of length nnodes
-#excitatory connections
-a_ee=3.5; a_ei=2.5
-#inhibitory connections
-a_ie=3.75; a_ii=0
-#tau
-tauE=0.010; tauI=0.020  # Units: seconds
-#external input
-P = 0.4 # 0.4
-Q = 0
-# inhibitory plasticity
 
-rE,rI=0.5,0.5
-mu = 1;sigma=0.25
-
-D=0
-# This is a mock value, it will get overwritten
-sqdtD=0.1
-
-#network parameters
-N=50
-G=0.001
-CM=np.random.binomial(1,0.1,(N,N)).astype(np.float64)
+import toml
 
 
-@vectorize([float64(float64)],nopython=True)
+def create(params_file):
+    """
+    Carga los parámetros desde un archivo TOML y los hace accesibles de forma global.
+    
+    :param params_file: Ruta del archivo TOML con parámetros.
+    """
+
+    with open(params_file, "r", encoding="utf-8") as f:
+        modelParameters = toml.load(f)
+
+    # Extraer N antes de usarlo
+    #global N
+    for key,val in zip(modelParameters.keys(),modelParameters.values()):
+        exec(f"{key} = {val}",globals())
+    
+    # Generar matriz CM
+    global CM
+    CM = np.random.binomial(1, 0.1, (N, N)).astype(np.float64)
+
+    # Hacer cada parámetro accesible como variable global
+    #globals().update(CM)
+
+#@vectorize([float64(float64)],nopython=True)
+@njit
 def S(x):
     return (1/(1+np.exp(-(x-mu)/sigma)))
 
-@jit(float64[:,:](float64,float64[:,:]),nopython=True)
+#@jit(float64[:,:](float64,float64[:,:]),nopython=True)
+@njit
 def wilsonCowan(t,X):
     E,I = X
     noise=np.random.normal(0,sqdtD,size=N)
     return np.vstack(((-E + (1-rE*E)*S(a_ee*E - a_ei*I + G*np.dot(CM,E) + P + noise))/tauE,
                      (-I + (1-rI*I)*S(a_ie*E - a_ii*I ))/tauI))
 
-@jit(float64[:,:](float64,float64[:,:]),nopython=True)
+#@jit(float64[:,:](float64,float64[:,:]),nopython=True)
+@njit
 def wilsonCowanDet(t,X):
     E,I = X
     return np.vstack(((-E + (1-rE*E)*S(a_ee*E - a_ei*I + G*np.dot(CM,E) + P))/tauE,
                      (-I + (1-rI*I)*S(a_ie*E - a_ii*I ))/tauI))
-
-"""
-The main function is starting from here          
-"""
-
-E0=0.1
-I0=0.1
-
-### Time units are seconds  ###
-tTrans=2
-tstop=100
-dt=0.001    #interval for points storage
-dtSim=0.0001   #interval for simulation (ODE integration)
-downsamp=int(dt/dtSim)
-
-# # adaptation time - note that adaptation occurs twice
-# timeTrans=np.arange(0,tTrans,dtSim)
-# # Simulation time
-# timeSim=np.arange(0,tstop,dtSim)
-# # time for storing data
-# time=np.arange(0,dt,tstop)
 
 def SimAdapt(Init=None):
     """
@@ -87,7 +67,7 @@ def SimAdapt(Init=None):
         Var=Init
     # generate the vector again in case variables have changed
     timeTrans=np.arange(0,tTrans,dtSim)    
- 
+
     if D==0:
         wilsonCowanDet.recompile()
         for i,t in enumerate(timeTrans):
@@ -97,13 +77,12 @@ def SimAdapt(Init=None):
         wilsonCowan.recompile()
         for i,t in enumerate(timeTrans):
             Var+=dtSim*wilsonCowan(t,Var)
-    
     return Var
 
 def Sim(Var0=None,verbose=False):
     """
     Run a network simulation with the current parameter values.
-    
+
     If D==0, run deterministic simulation.
     Note that the time unit in this model is seconds.
 
@@ -132,17 +111,17 @@ def Sim(Var0=None,verbose=False):
 
     """
     global CM,sqdtD,downsamp
-    
+
     if CM.shape[0]!=CM.shape[1] or CM.shape[0]!=N:
         raise ValueError("check CM dimensions (",CM.shape,") and number of nodes (",N,")")
-    
+
     if CM.dtype is not np.dtype('float64'):
         try:
             CM=CM.astype(np.float64)
         except:
             raise TypeError("CM must be of numeric type, preferred float")
-    
-    
+
+
     if type(Var0)==np.ndarray:
         if len(Var0.shape)==1:
             Var=Var0*np.ones((1,N))
@@ -195,52 +174,7 @@ def Sim(Var0=None,verbose=False):
             Var += dtSim*wilsonCowan(t,Var)
             
     return Y_t,time
-        
-def ParamsNode():
-    pardict={}
-    for var in ('a_ee','a_ie','a_ei','a_ii','tauE','tauI',
-                'P','Q','rE','rI','mu','sigma'):
-        pardict[var]=eval(var)
-        
-    return pardict
 
-def ParamsNet():
-    pardict={}
-    for var in ('N','G','CM'):
-        pardict[var]=eval(var)
-        
-    return pardict
 
-def ParamsSim():
-    pardict={}
-    for var in ('tTrans','tstop','dt','dtSim'):
-        pardict[var]=eval(var)
-        
-    return pardict
-#%%
-if __name__=="__main__":
-    
-    import matplotlib.pyplot as plt
-    
-    tTrans=25
-    tstop=10
-    G=0.005
-    D=0
-    
-    N=20
-    CM=np.random.binomial(1,0.3,(N,N)).astype(np.float32)
-    P=np.random.uniform(0.34,0.5,N)
-    # P=.4
-    
-    Vtrace,time=Sim(verbose=True)
-    ParamsNode()
-#%%    
-    plt.figure(1)
-    plt.clf()
-    plt.subplot(211)
-    plt.plot(time,Vtrace[:,0,:])
 
-    plt.subplot(212)
-    plt.plot(time,Vtrace[:,1,:])
-    
-    
+
