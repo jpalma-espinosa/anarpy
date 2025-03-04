@@ -1,50 +1,34 @@
 # -*- coding: utf-8 -*-
 """
 Created on Tue Dec 22 14:56:13 2015
-The Huber_braun neuronal model function
-@author: porio
+Wilson Cowan Model with plasticity and network topology
 """
-
 import numpy as np
-from numba import jit,float64, vectorize
-
+from numba import njit
+import toml
 from numba.core.errors import NumbaPerformanceWarning
 import warnings
 warnings.simplefilter('ignore', category=NumbaPerformanceWarning)
 
-#Node parameters
-# Any of them can be redefined as a vector of length nnodes
-#excitatory connections
-a_ee=3.5; a_ei_0=2.5
-#inhibitory connections
-a_ie=3.75; a_ii=0
-#tau
-tauE=0.010; tauI=0.020  # Units: seconds
-#external input
-P = 0.4 # 0.4
-Q = 0
-# inhibitory plasticity
-rhoE=0.14 # target mean value for E
-tau_ip=2  #time constant for plasticity
+def create(params_file):
+    """
+    Carga los parámetros desde un archivo TOML y los hace accesibles de forma global.
+        * param params_file: Ruta del archivo TOML con parámetros.
+    """
+    with open(params_file, "r", encoding="utf-8") as f:
+        modelParameters = toml.load(f)
 
-rE,rI=0.5,0.5
-mu = 1;sigma=0.25
+    for key,val in zip(modelParameters.keys(),modelParameters.values()):
+        exec(f"{key} = {val}",globals())
+    
+    global CM
+    CM = np.random.binomial(1, 0.1, (N, N)).astype(np.float64)
 
-D=0
-# This is a mock value, it will get overwritten
-sqdtD=0.1
-
-#network parameters
-N=50
-G=0.001
-CM=np.random.binomial(1,0.1,(N,N)).astype(np.float64)
-
-
-@vectorize([float64(float64)],nopython=True)
+@njit
 def S(x):
     return (1/(1+np.exp(-(x-mu)/sigma)))
 
-@jit(float64[:,:](float64,float64[:,:]),nopython=True)
+@njit
 def wilsonCowan(t,X):
     E,I,a_ei = X
     noise=np.random.normal(0,sqdtD,size=N)
@@ -52,33 +36,12 @@ def wilsonCowan(t,X):
                      (-I + (1-rI*I)*S(a_ie*E - a_ii*I ))/tauI,
                      (I*(E-rhoE))/tau_ip))
 
-@jit(float64[:,:](float64,float64[:,:]),nopython=True)
+@njit
 def wilsonCowanDet(t,X):
     E,I,a_ei = X
     return np.vstack(((-E + (1-rE*E)*S(a_ee*E - a_ei*I + G*np.dot(CM,E) + P))/tauE,
                      (-I + (1-rI*I)*S(a_ie*E - a_ii*I ))/tauI,
                      (I*(E-rhoE))/tau_ip))
-
-"""
-The main function is starting from here          
-"""
-
-E0=0.1
-I0=0.1
-
-### Time units are seconds  ###
-tTrans=100
-tstop=100
-dt=0.001    #interval for points storage
-dtSim=0.0001   #interval for simulation (ODE integration)
-downsamp=int(dt/dtSim)
-
-# # adaptation time - note that adaptation occurs twice
-# timeTrans=np.arange(0,tTrans,dtSim)
-# # Simulation time
-# timeSim=np.arange(0,tstop,dtSim)
-# # time for storing data
-# time=np.arange(0,dt,tstop)
 
 def SimAdapt(Init=None):
     """
@@ -87,8 +50,7 @@ def SimAdapt(Init=None):
     First with tau_ip=0.05
     Second with tau_ip=tau_ip/2 and noise if D>0
     """
-
-    global tau_ip, timeTrans, sqdtD
+    global timeTrans, tau_ip
     if Init is None:
         Var=np.array([E0,I0,a_ei_0])[:,None]*np.ones((1,N))
     else:
@@ -116,7 +78,6 @@ def SimAdapt(Init=None):
         for i,t in enumerate(timeTrans):
             Var+=dtSim*wilsonCowan(t,Var)
     tau_ip=old_tau_ip
-    
     return Var
 
 def Sim(Var0=None,verbose=False):
@@ -151,7 +112,7 @@ def Sim(Var0=None,verbose=False):
 
     """
     global CM,sqdtD,downsamp
-    
+
     if CM.shape[0]!=CM.shape[1] or CM.shape[0]!=N:
         raise ValueError("check CM dimensions (",CM.shape,") and number of nodes (",N,")")
     
@@ -214,53 +175,3 @@ def Sim(Var0=None,verbose=False):
             Var += dtSim*wilsonCowan(t,Var)
             
     return Y_t,time
-        
-def ParamsNode():
-    pardict={}
-    for var in ('a_ee','a_ie','a_ii','tauE','tauI',
-                'P','Q','rhoE','tau_ip','rE','rI','mu','sigma'):
-        pardict[var]=eval(var)
-        
-    return pardict
-
-def ParamsNet():
-    pardict={}
-    for var in ('N','G','CM'):
-        pardict[var]=eval(var)
-        
-    return pardict
-
-def ParamsSim():
-    pardict={}
-    for var in ('tTrans','tstop','dt','dtSim'):
-        pardict[var]=eval(var)
-        
-    return pardict
-#%%
-if __name__=="__main__":
-    
-    import matplotlib.pyplot as plt
-    
-    tTrans=25
-    tstop=10
-    G=0.005
-    D=0
-    rhoE=0.14
-    
-    N=20
-    CM=np.random.binomial(1,0.3,(N,N)).astype(np.float32)
-    P=np.random.uniform(0.3,0.5,N)
-    # P=.4
-    
-    Vtrace,time=Sim(verbose=True)
-    ParamsNode()
-#%%    
-    plt.figure(1)
-    plt.clf()
-    plt.subplot(211)
-    plt.plot(time,Vtrace[:,0,:])
-
-    plt.subplot(212)
-    plt.plot(time,Vtrace[:,2,:])
-    
-    

@@ -1,47 +1,33 @@
 # -*- coding: utf-8 -*-
 """
 Created on Tue Dec 22 14:56:13 2015
-The Huber_braun neuronal model function
-@author: porio
+Wilson Cowan Model with network topology
 """
 import numpy as np
-from numba import njit#jit,float64, vectorize
+from numba import njit
+import toml
 from numba.core.errors import NumbaPerformanceWarning
 import warnings
 warnings.simplefilter('ignore', category=NumbaPerformanceWarning)
 
-
-import toml
-
-
 def create(params_file):
     """
     Carga los parámetros desde un archivo TOML y los hace accesibles de forma global.
-    
-    :param params_file: Ruta del archivo TOML con parámetros.
+        * param params_file: Ruta del archivo TOML con parámetros.
     """
-
     with open(params_file, "r", encoding="utf-8") as f:
         modelParameters = toml.load(f)
 
-    # Extraer N antes de usarlo
-    #global N
     for key,val in zip(modelParameters.keys(),modelParameters.values()):
         exec(f"{key} = {val}",globals())
     
-    # Generar matriz CM
     global CM
     CM = np.random.binomial(1, 0.1, (N, N)).astype(np.float64)
 
-    # Hacer cada parámetro accesible como variable global
-    #globals().update(CM)
-
-#@vectorize([float64(float64)],nopython=True)
 @njit
 def S(x):
     return (1/(1+np.exp(-(x-mu)/sigma)))
 
-#@jit(float64[:,:](float64,float64[:,:]),nopython=True)
 @njit
 def wilsonCowan(t,X):
     E,I = X
@@ -49,7 +35,6 @@ def wilsonCowan(t,X):
     return np.vstack(((-E + (1-rE*E)*S(a_ee*E - a_ei*I + G*np.dot(CM,E) + P + noise))/tauE,
                      (-I + (1-rI*I)*S(a_ie*E - a_ii*I ))/tauI))
 
-#@jit(float64[:,:](float64,float64[:,:]),nopython=True)
 @njit
 def wilsonCowanDet(t,X):
     E,I = X
@@ -65,8 +50,9 @@ def SimAdapt(Init=None):
         Var=np.array([E0,I0])[:,None]*np.ones((1,N))
     else:
         Var=Init
+    
     # generate the vector again in case variables have changed
-    timeTrans=np.arange(0,tTrans,dtSim)    
+    timeTrans=np.arange(0,tTrans,dtSim)
 
     if D==0:
         wilsonCowanDet.recompile()
@@ -174,7 +160,3 @@ def Sim(Var0=None,verbose=False):
             Var += dtSim*wilsonCowan(t,Var)
             
     return Y_t,time
-
-
-
-

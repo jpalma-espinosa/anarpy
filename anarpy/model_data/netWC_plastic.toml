@@ -1,0 +1,50 @@
+# Node parameters
+# Any of them can be redefined as a vector of length nnodes
+
+# Excitatory connections
+a_ee = 3.5
+a_ei_0 = 2.5
+
+# Inhibitory connections
+a_ie = 3.75
+a_ii = 0.0
+
+# Tau (units: seconds)
+tauE = 0.010
+tauI = 0.020
+
+# External input
+P = 0.4
+Q = 0.0
+
+# Inhibitory plasticity
+rhoE = 0.14  # Target mean value for E
+tau_ip = 2.0  # Time constant for plasticity
+
+rE = 0.5
+rI = 0.5
+mu = 1.0
+sigma = 0.25
+
+D = 0
+# This is a mock value, it will get overwritten
+sqdtD = 0.1
+
+# Network parameters
+N = 50
+G = 0.001
+
+# CM is generated in Python
+# Example: CM = np.random.binomial(1, 0.1, (N, N)).astype(np.float64)
+
+E0 = 0.1
+I0 = 0.1
+
+# Time units are seconds
+tTrans = 100
+tstop = 100
+dt = 0.001    # Interval for points storage
+dtSim = 0.0001  # Interval for simulation (ODE integration)
+
+# downsamp must be computed in Python
+# Example: downsamp = int(dt/dtSim)
